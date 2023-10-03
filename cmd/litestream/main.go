@@ -17,14 +17,15 @@ import (
 	"time"
 
 	"filippo.io/age"
+	_ "github.com/mattn/go-sqlite3"
+	"gopkg.in/yaml.v2"
+
 	"github.com/benbjohnson/litestream"
 	"github.com/benbjohnson/litestream/abs"
 	"github.com/benbjohnson/litestream/file"
 	"github.com/benbjohnson/litestream/gcs"
 	"github.com/benbjohnson/litestream/s3"
 	"github.com/benbjohnson/litestream/sftp"
-	_ "github.com/mattn/go-sqlite3"
-	"gopkg.in/yaml.v2"
 )
 
 // Build information.
@@ -159,6 +160,9 @@ type Config struct {
 	// Bind address for serving metrics.
 	Addr string `yaml:"addr"`
 
+	// Bind address for http server listening to config changes.
+	ConfigAddr string `yaml:"config-addr"`
+
 	// List of databases to manage.
 	DBs []*DBConfig `yaml:"dbs"`
 
@@ -283,12 +287,13 @@ func ReadConfigFile(filename string, expandEnv bool) (_ Config, err error) {
 
 // DBConfig represents the configuration for a single database.
 type DBConfig struct {
-	Path               string         `yaml:"path"`
-	MetaPath           *string        `yaml:"meta-path"`
-	MonitorInterval    *time.Duration `yaml:"monitor-interval"`
-	CheckpointInterval *time.Duration `yaml:"checkpoint-interval"`
-	MinCheckpointPageN *int           `yaml:"min-checkpoint-page-count"`
-	MaxCheckpointPageN *int           `yaml:"max-checkpoint-page-count"`
+	Path                    string         `yaml:"path"`
+	MetaPath                *string        `yaml:"meta-path"`
+	MonitorInterval         *time.Duration `yaml:"monitor-interval"`
+	CheckpointInterval      *time.Duration `yaml:"checkpoint-interval"`
+	MinCheckpointPageN      *int           `yaml:"min-checkpoint-page-count"`
+	MaxCheckpointPageN      *int           `yaml:"max-checkpoint-page-count"`
+	EnforceRetentionOnClose *bool          `yaml:"enforce-retention-on-close"`
 
 	Replicas []*ReplicaConfig `yaml:"replicas"`
 }
@@ -318,6 +323,9 @@ func NewDBFromConfig(dbc *DBConfig) (*litestream.DB, error) {
 	}
 	if dbc.MaxCheckpointPageN != nil {
 		db.MaxCheckpointPageN = *dbc.MaxCheckpointPageN
+	}
+	if dbc.EnforceRetentionOnClose != nil {
+		db.EnforceRetentionOnClose = *dbc.EnforceRetentionOnClose
 	}
 
 	// Instantiate and attach replicas.
