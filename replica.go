@@ -16,11 +16,12 @@ import (
 	"time"
 
 	"filippo.io/age"
-	"github.com/benbjohnson/litestream/internal"
 	"github.com/pierrec/lz4/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/benbjohnson/litestream/internal"
 )
 
 // Default replica settings.

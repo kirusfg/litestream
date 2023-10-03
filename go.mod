@@ -14,7 +14,7 @@ require (
 	github.com/prometheus/client_golang v1.16.0
 	golang.org/x/crypto v0.12.0
 	golang.org/x/sync v0.3.0
-	golang.org/x/sys v0.11.0
+	golang.org/x/sys v0.12.0
 	google.golang.org/api v0.135.0
 	gopkg.in/yaml.v2 v2.4.0
 )
@@ -42,6 +42,7 @@ require (
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/prometheus/procfs v0.11.1 // indirect
 	go.opencensus.io v0.24.0 // indirect
+	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/net v0.14.0 // indirect
 	golang.org/x/oauth2 v0.11.0 // indirect
 	golang.org/x/text v0.12.0 // indirect

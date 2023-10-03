@@ -20,17 +20,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/benbjohnson/litestream/internal"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/benbjohnson/litestream/internal"
 )
 
 // Default DB settings.
 const (
-	DefaultMonitorInterval    = 1 * time.Second
-	DefaultCheckpointInterval = 1 * time.Minute
-	DefaultMinCheckpointPageN = 1000
-	DefaultMaxCheckpointPageN = 10000
+	DefaultMonitorInterval         = 1 * time.Second
+	DefaultCheckpointInterval      = 1 * time.Minute
+	DefaultMinCheckpointPageN      = 1000
+	DefaultMaxCheckpointPageN      = 10000
+	DefaultEnforceRetentionOnClose = false
 )
 
 // MaxIndex is the maximum possible WAL index.
@@ -43,8 +45,8 @@ const BusyTimeout = 1 * time.Second
 // DB represents a managed instance of a SQLite database in the file system.
 type DB struct {
 	mu       sync.RWMutex
-	path     string        // part to database
-	metaPath string        // Path to the database metadata.
+	path     string        // path to database
+	metaPath string        // path to the database metadata
 	db       *sql.DB       // target database
 	f        *os.File      // long-running db file descriptor
 	rtx      *sql.Tx       // long running read transaction
@@ -93,6 +95,9 @@ type DB struct {
 	// Frequency at which to perform db sync.
 	MonitorInterval time.Duration
 
+	// Whether to enforce retention on DB close or not
+	EnforceRetentionOnClose bool
+
 	// List of replicas for the database.
 	// Must be set before calling Open().
 	Replicas []*Replica
@@ -110,10 +115,11 @@ func NewDB(path string) *DB {
 		metaPath: filepath.Join(dir, "."+file+MetaDirSuffix),
 		notify:   make(chan struct{}),
 
-		MinCheckpointPageN: DefaultMinCheckpointPageN,
-		MaxCheckpointPageN: DefaultMaxCheckpointPageN,
-		CheckpointInterval: DefaultCheckpointInterval,
-		MonitorInterval:    DefaultMonitorInterval,
+		MinCheckpointPageN:      DefaultMinCheckpointPageN,
+		MaxCheckpointPageN:      DefaultMaxCheckpointPageN,
+		CheckpointInterval:      DefaultCheckpointInterval,
+		MonitorInterval:         DefaultMonitorInterval,
+		EnforceRetentionOnClose: DefaultEnforceRetentionOnClose,
 
 		Logger: log.Default(),
 	}
@@ -325,6 +331,12 @@ func (db *DB) Close() (err error) {
 	for _, r := range db.Replicas {
 		if db.db != nil {
 			if e := r.Sync(ctx); e != nil && err == nil {
+				err = e
+			}
+		}
+		if db.EnforceRetentionOnClose {
+			r.Retention = 0
+			if e := r.EnforceRetention(ctx); e != nil && err == nil {
 				err = e
 			}
 		}

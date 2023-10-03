@@ -11,14 +11,15 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/mattn/go-shellwords"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/benbjohnson/litestream"
 	"github.com/benbjohnson/litestream/abs"
 	"github.com/benbjohnson/litestream/file"
 	"github.com/benbjohnson/litestream/gcs"
 	"github.com/benbjohnson/litestream/s3"
 	"github.com/benbjohnson/litestream/sftp"
-	"github.com/mattn/go-shellwords"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // ReplicateCommand represents a command that continuously replicates SQLite databases.
@@ -151,6 +152,23 @@ func (c *ReplicateCommand) Run() (err error) {
 			http.Handle("/metrics", promhttp.Handler())
 			if err := http.ListenAndServe(c.Config.Addr, nil); err != nil {
 				log.Printf("cannot start metrics server: %s", err)
+			}
+		}()
+	}
+
+	if c.Config.ConfigAddr != "" {
+		hostport := c.Config.ConfigAddr
+		if host, port, _ := net.SplitHostPort(c.Config.ConfigAddr); port == "" {
+			return fmt.Errorf("must specify port for bind address: %q", c.Config.ConfigAddr)
+		} else if host == "" {
+			hostport = net.JoinHostPort("localhost", port)
+		}
+
+		log.Printf("watching for config updates on http://%s/config", hostport)
+		go func() {
+			http.Handle("/config", NewConfigHandler(c))
+			if err := http.ListenAndServe(c.Config.ConfigAddr, nil); err != nil {
+				log.Printf("cannot start config update endpoint: %s", err)
 			}
 		}()
 	}
