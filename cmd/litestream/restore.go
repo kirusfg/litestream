@@ -42,7 +42,7 @@ func (c *RestoreCommand) Run(ctx context.Context, args []string) (err error) {
 	// Parse timestamp, if specified.
 	if *timestampStr != "" {
 		if opt.Timestamp, err = time.Parse(time.RFC3339, *timestampStr); err != nil {
-			return errors.New("invalid -timestamp, must specify in ISO 8601 format (e.g. 2000-01-01T00:00:00Z)")
+			return errors.New("invalid -timestamp, must specify in ISO 8601 format (e.g. 2000-01-01T00:00:00Z)")
 		}
 	}
 

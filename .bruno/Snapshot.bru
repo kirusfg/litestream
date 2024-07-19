@@ -1,0 +1,19 @@
+meta {
+  name: Snapshot
+  type: http
+  seq: 3
+}
+
+post {
+  url: http://localhost:9091/snapshot
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "database-path": "/home/kirusfg/Code/litestream/test.db",
+    "replica-name": "s3",
+    "retain": true
+  }
+}

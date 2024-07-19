@@ -3,3 +3,7 @@
 /dist
 *test-*.*
 *.db
+
+*-litestream
+*-litestream.db
+*-litestream.db-journal

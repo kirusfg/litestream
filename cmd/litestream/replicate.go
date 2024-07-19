@@ -84,7 +84,7 @@ func (c *ReplicateCommand) ParseFlags(ctx context.Context, args []string) (err e
 }
 
 // Run loads all databases specified in the configuration.
-func (c *ReplicateCommand) Run() (err error) {
+func (c *ReplicateCommand) Run(ctx context.Context) (err error) {
 	// Display version information.
 	slog.Info("litestream", "version", Version)
 
@@ -128,37 +128,41 @@ func (c *ReplicateCommand) Run() (err error) {
 		}
 	}
 
-	// Serve metrics over HTTP if enabled.
-	if c.Config.Addr != "" {
-		hostport := c.Config.Addr
-		if host, port, _ := net.SplitHostPort(c.Config.Addr); port == "" {
-			return fmt.Errorf("must specify port for bind address: %q", c.Config.Addr)
+	// Enable the HTTP server.
+	if c.Config.HTTP.Addr != "" {
+		hostport := c.Config.HTTP.Addr
+		if host, port, _ := net.SplitHostPort(c.Config.HTTP.Addr); port == "" {
+			return fmt.Errorf("must specify port for bind address: %q", c.Config.HTTP.Addr)
 		} else if host == "" {
 			hostport = net.JoinHostPort("localhost", port)
 		}
 
-		slog.Info("serving metrics on", "url", fmt.Sprintf("http://%s/metrics", hostport))
 		go func() {
-			http.Handle("/metrics", promhttp.Handler())
-			if err := http.ListenAndServe(c.Config.Addr, nil); err != nil {
-				slog.Error("cannot start metrics server", "error", err)
+			start := false
+			if c.Config.HTTP.Metrics {
+				slog.Info("serving metrics on", "url", fmt.Sprintf("http://%s/metrics", hostport))
+				http.Handle("/metrics", promhttp.Handler())
+				start = true
 			}
-		}()
-	}
-
-	if c.Config.ConfigAddr != "" {
-		hostport := c.Config.ConfigAddr
-		if host, port, _ := net.SplitHostPort(c.Config.ConfigAddr); port == "" {
-			return fmt.Errorf("must specify port for bind address: %q", c.Config.ConfigAddr)
-		} else if host == "" {
-			hostport = net.JoinHostPort("localhost", port)
-		}
-
-		log.Printf("watching for config updates on http://%s/config", hostport)
-		go func() {
-			http.Handle("/config", NewConfigHandler(c))
-			if err := http.ListenAndServe(c.Config.ConfigAddr, nil); err != nil {
-				log.Printf("cannot start config update endpoint: %s", err)
+			if c.Config.HTTP.ConfigUpdates {
+				slog.Info("watching for config updates on", "url", fmt.Sprintf("http://%s/config", hostport))
+				http.Handle("/config", NewConfigHandler(c))
+				start = true
+			}
+			if c.Config.HTTP.Checkpoint {
+				slog.Info("watching for checkpoint signals on", "url", fmt.Sprintf("http://%s/checkpoint", hostport))
+				http.Handle("/checkpoint", NewCheckpointHandler(ctx, c))
+				start = true
+			}
+			if c.Config.HTTP.Snapshot {
+				slog.Info("watching for snapshot signals on", "url", fmt.Sprintf("http://%s/snapshot", hostport))
+				http.Handle("/snapshot", NewSnapshotHandler(ctx, c))
+				start = true
+			}
+			if start {
+				if err := http.ListenAndServe(c.Config.HTTP.Addr, nil); err != nil {
+					slog.Error("cannot start the HTTP server", "error", err)
+				}
 			}
 		}()
 	}

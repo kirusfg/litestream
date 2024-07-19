@@ -86,7 +86,7 @@ func (m *Main) Run(ctx context.Context, args []string) (err error) {
 		// Setup signal handler.
 		signalCh := signalChan()
 
-		if err := c.Run(); err != nil {
+		if err := c.Run(ctx); err != nil {
 			return err
 		}
 
@@ -157,11 +157,7 @@ The commands are:
 
 // Config represents a configuration file for the litestream daemon.
 type Config struct {
-	// Bind address for serving metrics.
-	Addr string `yaml:"addr"`
-
-	// Bind address for http server listening to config changes.
-	ConfigAddr string `yaml:"config-addr"`
+	HTTP HTTPConfig `yaml:"http"`
 
 	// List of databases to manage.
 	DBs []*DBConfig `yaml:"dbs"`
@@ -176,6 +172,23 @@ type Config struct {
 
 	// Logging
 	Logging LoggingConfig `yaml:"logging"`
+}
+
+type HTTPConfig struct {
+	// Bind address for handling HTTP requests and serving metrics.
+	Addr string `yaml:"addr"`
+
+	// Whether to serve metrics via HTTP or not.
+	Metrics bool `yaml:"metrics"`
+
+	// Whether to handle configuration update signals via HTTP or not.
+	ConfigUpdates bool `yaml:"config-updates"`
+
+	// Whether to handle checkpoint signals via HTTP or not. This disables timeout-based checkpoints.
+	Checkpoint bool `yaml:"checkpoint"`
+
+	// Whether to handle snapshot signals via HTTP or not. This disables timeout-based snapshots.
+	Snapshot bool `yaml:"snapshot"`
 }
 
 // LoggingConfig configures logging.

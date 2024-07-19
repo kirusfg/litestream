@@ -153,7 +153,7 @@ func (r *Replica) Stop(hard bool) (err error) {
 
 // Sync copies new WAL frames from the shadow WAL to the replica client.
 func (r *Replica) Sync(ctx context.Context) (err error) {
-	// Clear last position if if an error occurs during sync.
+	// Clear last position if an error occurs during sync.
 	defer func() {
 		if err != nil {
 			r.mu.Lock()
@@ -672,6 +672,11 @@ func (r *Replica) deleteWALSegmentsBeforeIndex(ctx context.Context, generation s
 
 // monitor runs in a separate goroutine and continuously replicates the DB.
 func (r *Replica) monitor(ctx context.Context) {
+	if r.SyncInterval <= 0 {
+		r.Logger().Warn("sync interval is zero, you have to do this manually")
+		return
+	}
+
 	ticker := time.NewTicker(r.SyncInterval)
 	defer ticker.Stop()
 
@@ -1071,7 +1076,7 @@ func (r *Replica) Restore(ctx context.Context, opt RestoreOptions) (err error) {
 	// Ensure output path does not already exist.
 	if _, err := os.Stat(opt.OutputPath); err == nil {
 		return fmt.Errorf("cannot restore, output path already exists: %s", opt.OutputPath)
-	} else if err != nil && !os.IsNotExist(err) {
+	} else if !os.IsNotExist(err) {
 		return err
 	}
 
@@ -1208,7 +1213,7 @@ func (r *Replica) Restore(ctx context.Context, opt RestoreOptions) (err error) {
 
 		// Apply WAL to database file.
 		startTime := time.Now()
-		if err = applyWAL(ctx, index, tmpPath); err != nil {
+		if err = applyWAL(index, tmpPath); err != nil {
 			return fmt.Errorf("cannot apply wal: %w", err)
 		}
 		r.Logger().Info("applied wal", "generation", opt.Generation, "index", index, "elapsed", time.Since(startTime).String())
