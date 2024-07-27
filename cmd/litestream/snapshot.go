@@ -13,7 +13,7 @@ import (
 type SnapshotRequest struct {
 	DatabasePath string `json:"database-path"`
 	ReplicaName  string `json:"replica-name"`
-	Retain       bool   `json:"retain"`
+	Cleanup      bool   `json:"cleanup"`
 }
 
 type SnapshotResponse struct {
@@ -60,7 +60,7 @@ func (h *SnapshotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req SnapshotRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(400)
-		res := CheckpointResponse{Status: "error", Error: "invalid request"}
+		res := SnapshotResponse{Status: "error", Error: "invalid request"}
 		json.NewEncoder(w).Encode(res)
 		return
 	}
@@ -77,7 +77,7 @@ func (h *SnapshotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if db == nil {
 		h.Logger.Info(fmt.Sprintf("database %s not found", req.DatabasePath))
 		w.WriteHeader(404)
-		res := CheckpointResponse{Status: "error", Error: fmt.Sprintf("database %s not found", req.DatabasePath)}
+		res := SnapshotResponse{Status: "error", Error: fmt.Sprintf("database %s not found", req.DatabasePath)}
 		json.NewEncoder(w).Encode(res)
 		return
 	}
@@ -94,7 +94,7 @@ func (h *SnapshotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if rep == nil {
 		h.Logger.Info(fmt.Sprintf("replica %s for database %s not found", req.ReplicaName, req.DatabasePath))
 		w.WriteHeader(404)
-		res := CheckpointResponse{Status: "error", Error: fmt.Sprintf("replica %s for database %s not found", req.ReplicaName, req.DatabasePath)}
+		res := SnapshotResponse{Status: "error", Error: fmt.Sprintf("replica %s for database %s not found", req.ReplicaName, req.DatabasePath)}
 		json.NewEncoder(w).Encode(res)
 		return
 	}
@@ -104,23 +104,23 @@ func (h *SnapshotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if _, err := rep.Snapshot(h.ctx); err != nil {
 		h.Logger.Info(fmt.Sprintf("error creating snapshot of replica %s for database %s: %s", req.ReplicaName, req.DatabasePath, err))
 		w.WriteHeader(500)
-		res := CheckpointResponse{Status: "error", Error: fmt.Sprintf("error issuing snapshot on replica %s for database %s: %s", req.ReplicaName, req.DatabasePath, err)}
+		res := SnapshotResponse{Status: "error", Error: fmt.Sprintf("error issuing snapshot on replica %s for database %s: %s", req.ReplicaName, req.DatabasePath, err)}
 		json.NewEncoder(w).Encode(res)
 		return
 	}
 
-	if req.Retain {
+	if req.Cleanup {
 		h.Logger.Info(fmt.Sprintf("retaining snapshots of replica %s for database %s", req.ReplicaName, req.DatabasePath))
 		if err := rep.EnforceRetention(h.ctx); err != nil {
 			h.Logger.Info(fmt.Sprintf("error retaining snapshots of replica %s for database %s: %s", req.ReplicaName, req.DatabasePath, err))
 			w.WriteHeader(500)
-			res := CheckpointResponse{Status: "error", Error: fmt.Sprintf("error issuing retain on replica %s for database %s: %s", req.ReplicaName, req.DatabasePath, err)}
+			res := SnapshotResponse{Status: "error", Error: fmt.Sprintf("error issuing retain on replica %s for database %s: %s", req.ReplicaName, req.DatabasePath, err)}
 			json.NewEncoder(w).Encode(res)
 			return
 		}
 	}
 
 	w.WriteHeader(200)
-	res := CheckpointResponse{Status: "ok"}
+	res := SnapshotResponse{Status: "ok"}
 	json.NewEncoder(w).Encode(res)
 }

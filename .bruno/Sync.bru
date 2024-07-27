@@ -1,11 +1,11 @@
 meta {
-  name: Checkpoint
+  name: Sync
   type: http
   seq: 2
 }
 
 post {
-  url: http://localhost:9091/checkpoint
+  url: http://localhost:9091/sync
   body: json
   auth: none
 }
@@ -14,7 +14,7 @@ body:json {
   {
     "database-path": "/home/kirusfg/Code/litestream/test.db",
     "replica-name": "s3",
-    "mode": "PASSIVE",
-    "sync": true
+    "checkpoint": true,
+    "checkpoint-mode": "PASSIVE"
   }
 }

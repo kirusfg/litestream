@@ -149,9 +149,9 @@ func (c *ReplicateCommand) Run(ctx context.Context) (err error) {
 				http.Handle("/config", NewConfigHandler(c))
 				start = true
 			}
-			if c.Config.HTTP.Checkpoint {
-				slog.Info("watching for checkpoint signals on", "url", fmt.Sprintf("http://%s/checkpoint", hostport))
-				http.Handle("/checkpoint", NewCheckpointHandler(ctx, c))
+			if c.Config.HTTP.Sync {
+				slog.Info("watching for sync signals on", "url", fmt.Sprintf("http://%s/sync", hostport))
+				http.Handle("/sync", NewSyncHandler(ctx, c))
 				start = true
 			}
 			if c.Config.HTTP.Snapshot {

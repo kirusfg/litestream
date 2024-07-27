@@ -184,8 +184,8 @@ type HTTPConfig struct {
 	// Whether to handle configuration update signals via HTTP or not.
 	ConfigUpdates bool `yaml:"config-updates"`
 
-	// Whether to handle checkpoint signals via HTTP or not. This disables timeout-based checkpoints.
-	Checkpoint bool `yaml:"checkpoint"`
+	// Whether to handle sync signals via HTTP or not. This disables timeout-based checkpoints.
+	Sync bool `yaml:"sync"`
 
 	// Whether to handle snapshot signals via HTTP or not. This disables timeout-based snapshots.
 	Snapshot bool `yaml:"snapshot"`
