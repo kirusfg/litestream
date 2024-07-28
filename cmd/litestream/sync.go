@@ -110,6 +110,15 @@ func (h *SyncHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		mode = litestream.CheckpointModeTruncate
 	}
 
+	h.Logger.Info(fmt.Sprintf("issuing sync on database %s", req.DatabasePath))
+	if err := db.Sync(h.ctx); err != nil {
+		h.Logger.Info(fmt.Sprintf("error issuing sync on database %s: %s", req.DatabasePath, err))
+		w.WriteHeader(500)
+		res := SyncResponse{Status: "error", Error: fmt.Sprintf("error issuing sync on database %s: %s", req.DatabasePath, err)}
+		json.NewEncoder(w).Encode(res)
+		return
+	}
+
 	// Issue sync
 	h.Logger.Info(fmt.Sprintf("issuing sync on replica %s for database %s", req.ReplicaName, req.DatabasePath))
 	if err := rep.Sync(h.ctx); err != nil {
