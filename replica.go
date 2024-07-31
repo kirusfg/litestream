@@ -112,15 +112,32 @@ func (r *Replica) DB() *DB { return r.db }
 // Starts replicating in a background goroutine.
 func (r *Replica) Start(ctx context.Context) error {
 	// Ignore if replica is being used sychronously.
+	r.Logger().Debug("starting replication")
 	if !r.MonitorEnabled {
 		return nil
 	}
 
 	// Stop previous replication.
+	r.Logger().Debug("stopping previous replication")
 	r.Stop(false)
 
 	// Wrap context with cancelation.
 	ctx, r.cancel = context.WithCancel(ctx)
+
+	// Wait for changes to the database to perform an initial sync.
+	r.Logger().Debug("waiting for initial sync")
+	notify := r.db.Notify()
+	select {
+	case <-ctx.Done():
+		return nil
+	case <-notify:
+		r.Logger().Debug("got notification to perform an initial sync")
+	}
+
+	r.Logger().Debug("doing initial sync")
+	if err := r.Sync(ctx); err != nil {
+		r.Logger().Error("monitor error", "error", err)
+	}
 
 	// Start goroutine to replicate data.
 	r.wg.Add(4)
@@ -672,8 +689,9 @@ func (r *Replica) deleteWALSegmentsBeforeIndex(ctx context.Context, generation s
 
 // monitor runs in a separate goroutine and continuously replicates the DB.
 func (r *Replica) monitor(ctx context.Context) {
+	// Disable automatic syncing if sync interval is zero.
 	if r.SyncInterval <= 0 {
-		r.Logger().Warn("sync interval is zero, you have to do this manually")
+		r.Logger().Warn("sync interval is zero, automatic syncing is disabled")
 		return
 	}
 

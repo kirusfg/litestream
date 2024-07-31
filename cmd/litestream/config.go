@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 )
 
 type ConfigHandler struct {
@@ -56,7 +57,7 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Take action on each of the databases in the new config
 	for _, newDBConfig := range h.c.Config.DBs {
 		// Keep track of existing or add new databases
-		h.Logger.Info(fmt.Sprintf("Checking database %s", newDBConfig.Path))
+		h.Logger.Info(fmt.Sprintf("checking database %s", newDBConfig.Path))
 		action := Add
 		for _, oldDB := range h.c.DBs {
 			if newDBConfig.Path == oldDB.Path() {
@@ -65,24 +66,24 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if action == Add {
-			h.Logger.Info(fmt.Sprintf("Adding database %s", newDBConfig.Path))
+			h.Logger.Info(fmt.Sprintf("adding database %s", newDBConfig.Path))
 			db, err := NewDBFromConfig(newDBConfig)
 			if err != nil {
 				w.WriteHeader(500)
-				w.Write([]byte(fmt.Sprintf("Error opening database %s for replication: %s", newDBConfig.Path, err)))
+				w.Write([]byte(fmt.Sprintf("error opening database %s for replication: %s", newDBConfig.Path, err)))
 				return
 			}
 
 			// Open database & attach to program
 			if err := db.Open(); err != nil {
 				w.WriteHeader(500)
-				w.Write([]byte(fmt.Sprintf("Error opening database %s for replication: %s", newDBConfig.Path, err)))
+				w.Write([]byte(fmt.Sprintf("error opening database %s for replication: %s", newDBConfig.Path, err)))
 				return
 			}
 			h.c.DBs = append(h.c.DBs, db)
-			h.Logger.Info(fmt.Sprintf("Opened database %s for replication", db.Path()))
+			h.Logger.Info(fmt.Sprintf("opened database %s for replication", db.Path()))
 		} else if action == Keep {
-			h.Logger.Info(fmt.Sprintf("Keeping database %s", newDBConfig.Path))
+			h.Logger.Info(fmt.Sprintf("keeping database %s", newDBConfig.Path))
 		}
 	}
 
@@ -96,10 +97,10 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if action == Remove {
-			h.Logger.Info(fmt.Sprintf("Removing database %s", oldDB.Path()))
+			h.Logger.Info(fmt.Sprintf("removing database %s", oldDB.Path()))
 			if err := oldDB.Close(context.Background()); err != nil {
 				w.WriteHeader(500)
-				w.Write([]byte(fmt.Sprintf("Error closing database %s: %s", oldDB.Path(), err)))
+				w.Write([]byte(fmt.Sprintf("error closing database %s: %s", oldDB.Path(), err)))
 				return
 			}
 			index := 0
@@ -110,10 +111,13 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			h.c.DBs = h.c.DBs[:index]
-			h.Logger.Info(fmt.Sprintf("Closed database %s", oldDB.Path()))
+			h.Logger.Info(fmt.Sprintf("closed database %s", oldDB.Path()))
 		}
 	}
 
-	w.WriteHeader(200)
-	// w.Write([]byte(fmt.Sprintf("Success! Replicating databases: %#v", h.c.DBs)))
+	dbPaths := make([]string, len(h.c.DBs))
+	for i, db := range h.c.DBs {
+		dbPaths[i] = db.Path()
+	}
+	w.Write([]byte(fmt.Sprintf("replicating %d databases: [%s]", len(h.c.DBs), strings.Join(dbPaths, ", "))))
 }

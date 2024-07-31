@@ -73,6 +73,9 @@ type DB struct {
 	checkpointErrorNCounterVec  *prometheus.CounterVec
 	checkpointSecondsCounterVec *prometheus.CounterVec
 
+	// Whether the initial sync has been performed or not.
+	initialSync bool
+
 	// Minimum threshold of WAL size, in pages, before a passive checkpoint.
 	// A passive checkpoint will attempt a checkpoint but fail if there are
 	// active transactions occurring at the same time.
@@ -104,9 +107,6 @@ type DB struct {
 	// Frequency at which to perform db sync.
 	MonitorInterval time.Duration
 
-	// Whether to enforce retention on DB close or not
-	EnforceRetentionOnClose bool
-
 	// List of replicas for the database.
 	// Must be set before calling Open().
 	Replicas []*Replica
@@ -120,9 +120,10 @@ func NewDB(path string) *DB {
 	dir, file := filepath.Split(path)
 
 	db := &DB{
-		path:     path,
-		metaPath: filepath.Join(dir, "."+file+MetaDirSuffix),
-		notify:   make(chan struct{}),
+		path:        path,
+		metaPath:    filepath.Join(dir, "."+file+MetaDirSuffix),
+		notify:      make(chan struct{}),
+		initialSync: false,
 
 		MinCheckpointPageN: DefaultMinCheckpointPageN,
 		MaxCheckpointPageN: DefaultMaxCheckpointPageN,
@@ -323,6 +324,11 @@ func (db *DB) Open() (err error) {
 		go func() { defer db.wg.Done(); db.monitor() }()
 	}
 
+	// Start replication.
+	for _, r := range db.Replicas {
+		r.Start(db.ctx)
+	}
+
 	return nil
 }
 
@@ -343,12 +349,6 @@ func (db *DB) Close(ctx context.Context) (err error) {
 	for _, r := range db.Replicas {
 		if db.db != nil {
 			if e := r.Sync(ctx); e != nil && err == nil {
-				err = e
-			}
-		}
-		if db.EnforceRetentionOnClose {
-			r.Retention = 0
-			if e := r.EnforceRetention(ctx); e != nil && err == nil {
 				err = e
 			}
 		}
@@ -500,11 +500,6 @@ func (db *DB) init() (err error) {
 	// Clean up previous generations.
 	if err := db.clean(); err != nil {
 		return fmt.Errorf("clean: %w", err)
-	}
-
-	// Start replication.
-	for _, r := range db.Replicas {
-		r.Start(db.ctx)
 	}
 
 	return nil
@@ -740,6 +735,7 @@ func (db *DB) Sync(ctx context.Context) (err error) {
 	// Track total sync metrics.
 	t := time.Now()
 	defer func() {
+		db.initialSync = true
 		db.syncNCounter.Inc()
 		if err != nil {
 			db.syncErrorNCounter.Inc()
@@ -821,12 +817,13 @@ func (db *DB) Sync(ctx context.Context) (err error) {
 	db.shadowWALSizeGauge.Set(float64(size))
 
 	// Notify replicas of WAL changes.
-	if changed {
+	if changed || !db.initialSync {
+		if !db.initialSync {
+			db.Logger.Debug("notifying replicas to perform the initial sync")
+		}
 		close(db.notify)
 		db.notify = make(chan struct{})
 	}
-
-	db.Logger.Debug("sync: ok")
 
 	return nil
 }
@@ -1416,7 +1413,7 @@ func (db *DB) execCheckpoint(mode string) (err error) {
 	if err := db.releaseReadLock(); err != nil {
 		return fmt.Errorf("release read lock: %w", err)
 	}
-	defer func() { _ = db.acquireReadLock() }()
+	// defer func() { _ = db.acquireReadLock() }()
 
 	// A non-forced checkpoint is issued as "PASSIVE". This will only checkpoint
 	// if there are not pending transactions. A forced checkpoint ("RESTART")
@@ -1434,7 +1431,7 @@ func (db *DB) execCheckpoint(mode string) (err error) {
 
 	// Reacquire the read lock immediately after the checkpoint.
 	if err := db.acquireReadLock(); err != nil {
-		return fmt.Errorf("release read lock: %w", err)
+		return fmt.Errorf("acquire read lock: %w", err)
 	}
 
 	return nil
@@ -1442,6 +1439,10 @@ func (db *DB) execCheckpoint(mode string) (err error) {
 
 // monitor runs in a separate goroutine and monitors the database & WAL.
 func (db *DB) monitor() {
+	if err := db.Sync(db.ctx); err != nil && !errors.Is(err, context.Canceled) {
+		db.Logger.Error("sync error", "error", err)
+	}
+
 	ticker := time.NewTicker(db.MonitorInterval)
 	defer ticker.Stop()
 
