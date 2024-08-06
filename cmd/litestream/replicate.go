@@ -90,7 +90,7 @@ func (c *ReplicateCommand) Run(ctx context.Context) (err error) {
 
 	// Setup databases.
 	if len(c.Config.DBs) == 0 {
-		slog.Error("no databases specified in configuration")
+		slog.Warn("no databases specified in configuration")
 	}
 
 	for _, dbConfig := range c.Config.DBs {
