@@ -124,21 +124,6 @@ func (r *Replica) Start(ctx context.Context) error {
 	// Wrap context with cancelation.
 	ctx, r.cancel = context.WithCancel(ctx)
 
-	// Wait for changes to the database to perform an initial sync.
-	r.Logger().Debug("waiting for initial sync")
-	notify := r.db.Notify()
-	select {
-	case <-ctx.Done():
-		return nil
-	case <-notify:
-		r.Logger().Debug("got notification to perform an initial sync")
-	}
-
-	r.Logger().Debug("doing initial sync")
-	if err := r.Sync(ctx); err != nil {
-		r.Logger().Error("monitor error", "error", err)
-	}
-
 	// Start goroutine to replicate data.
 	r.wg.Add(4)
 	go func() { defer r.wg.Done(); r.monitor(ctx) }()
@@ -691,7 +676,7 @@ func (r *Replica) deleteWALSegmentsBeforeIndex(ctx context.Context, generation s
 func (r *Replica) monitor(ctx context.Context) {
 	// Disable automatic syncing if sync interval is zero.
 	if r.SyncInterval <= 0 {
-		r.Logger().Warn("sync interval is zero, automatic syncing is disabled")
+		r.Logger().Info("sync interval is zero, automatic syncing is disabled")
 		return
 	}
 
@@ -718,6 +703,7 @@ func (r *Replica) monitor(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-notify:
+			r.Logger().Info("performing initial sync")
 		}
 
 		// Fetch new notify channel before replicating data.

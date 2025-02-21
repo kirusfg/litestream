@@ -73,9 +73,6 @@ type DB struct {
 	checkpointErrorNCounterVec  *prometheus.CounterVec
 	checkpointSecondsCounterVec *prometheus.CounterVec
 
-	// Whether the initial sync has been performed or not.
-	initialSync bool
-
 	// Minimum threshold of WAL size, in pages, before a passive checkpoint.
 	// A passive checkpoint will attempt a checkpoint but fail if there are
 	// active transactions occurring at the same time.
@@ -120,10 +117,9 @@ func NewDB(path string) *DB {
 	dir, file := filepath.Split(path)
 
 	db := &DB{
-		path:        path,
-		metaPath:    filepath.Join(dir, "."+file+MetaDirSuffix),
-		notify:      make(chan struct{}),
-		initialSync: false,
+		path:     path,
+		metaPath: filepath.Join(dir, "."+file+MetaDirSuffix),
+		notify:   make(chan struct{}),
 
 		MinCheckpointPageN: DefaultMinCheckpointPageN,
 		MaxCheckpointPageN: DefaultMaxCheckpointPageN,
@@ -299,6 +295,8 @@ func (db *DB) PageSize() int {
 
 // Open initializes the background monitoring goroutine.
 func (db *DB) Open() (err error) {
+	db.Logger.Info("opening database")
+
 	// Validate fields on database.
 	if db.MinCheckpointPageN <= 0 {
 		return fmt.Errorf("minimum checkpoint page count required")
@@ -735,7 +733,6 @@ func (db *DB) Sync(ctx context.Context) (err error) {
 	// Track total sync metrics.
 	t := time.Now()
 	defer func() {
-		db.initialSync = true
 		db.syncNCounter.Inc()
 		if err != nil {
 			db.syncErrorNCounter.Inc()
@@ -817,10 +814,7 @@ func (db *DB) Sync(ctx context.Context) (err error) {
 	db.shadowWALSizeGauge.Set(float64(size))
 
 	// Notify replicas of WAL changes.
-	if changed || !db.initialSync {
-		if !db.initialSync {
-			db.Logger.Debug("notifying replicas to perform the initial sync")
-		}
+	if changed {
 		close(db.notify)
 		db.notify = make(chan struct{})
 	}
@@ -1438,9 +1432,7 @@ func (db *DB) execCheckpoint(ctx context.Context, mode string) (err error) {
 
 // monitor runs in a separate goroutine and monitors the database & WAL.
 func (db *DB) monitor() {
-	if err := db.Sync(db.ctx); err != nil && !errors.Is(err, context.Canceled) {
-		db.Logger.Error("sync error", "error", err)
-	}
+	db.Logger.Info("starting database monitoring")
 
 	ticker := time.NewTicker(db.MonitorInterval)
 	defer ticker.Stop()
